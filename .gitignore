@@ -3,6 +3,7 @@
 *.so
 
 # General Python exclusion
+*__init__.py
 *.pyc
 
 # Swap files
