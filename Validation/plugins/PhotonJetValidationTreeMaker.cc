@@ -12,19 +12,12 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/Ptr.h"
-//#include "DataFormats/Common/interface/PtrVector.h"
 
-//#include "DataFormats/VertexReco/interface/Vertex.h"
-
-//#include "flashgg/MicroAOD/interface/VertexSelectorBase.h"
-//#include "flashgg/DataFormats/interface/Photon.h"
 #include "flashgg/DataFormats/interface/PhotonJetCandidate.h"
 #include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
 
 #include "TTree.h"
-#include "TMath.h"
-#include "TVector3.h"
 
 // **********************************************************************
 
@@ -97,11 +90,11 @@ using namespace flashgg;
 
 // **********************************************************************
 
-class ConvertedPhotonJetTreeMaker : public edm::EDAnalyzer
+class PhotonJetValidationTreeMaker : public edm::EDAnalyzer
 {
 public:
-    explicit ConvertedPhotonJetTreeMaker( const edm::ParameterSet & );
-    ~ConvertedPhotonJetTreeMaker();
+    explicit PhotonJetValidationTreeMaker( const edm::ParameterSet & );
+    ~PhotonJetValidationTreeMaker();
 
     static void fillDescriptions( edm::ConfigurationDescriptions &descriptions );
 
@@ -115,13 +108,13 @@ private:
     virtual void endJob() override;
 
     void initEventStructure();
-    int sortedIndex( const unsigned int VtxIndex, const unsigned int sizemax, const Ptr<flashgg::PhotonJetCandidate> photonjet );
+    int sortedIndex( const unsigned int &VtxIndex, const unsigned int &sizemax, const Ptr<flashgg::PhotonJetCandidate> &photonjet );
 
     edm::EDGetTokenT<edm::View<flashgg::PhotonJetCandidate> >       photonJetToken_;
     edm::EDGetTokenT<edm::View<reco::Vertex>>                       vertexToken_;
     
-    edm::EDGetTokenT<reco::BeamSpot>                                beamSpotToken_;
     edm::EDGetTokenT<GenEventInfoProduct>                           genEventInfoToken_;
+    edm::EDGetTokenT<reco::BeamSpot>                                beamSpotToken_;
     edm::EDGetTokenT<View<PileupSummaryInfo>>                       PileUpToken_;
     double evWeight_;
 
@@ -137,23 +130,23 @@ private:
 //
 // constructors and destructor
 //
-ConvertedPhotonJetTreeMaker::ConvertedPhotonJetTreeMaker( const edm::ParameterSet &iConfig ):
-    photonJetToken_(consumes<View<flashgg::PhotonJetCandidate> >(iConfig.getUntrackedParameter<InputTag> ("PhotonJetTag", InputTag("flashggPhotonJet")))),
-    vertexToken_(consumes<View<reco::Vertex>>(iConfig.getUntrackedParameter<InputTag> ("vertexTag", InputTag("offlineSlimmedPrimaryVertices")))),
-    beamSpotToken_( consumes<reco::BeamSpot>( iConfig.getUntrackedParameter<InputTag>( "BeamSpotTag", InputTag( "offlineBeamSpot" ) ) ) ),
-    genEventInfoToken_( consumes<GenEventInfoProduct>( iConfig.getUntrackedParameter<InputTag> ( "GenEventInfo", InputTag( "generator" ) ) ) ),
-    PileUpToken_( consumes<View<PileupSummaryInfo>>( iConfig.getUntrackedParameter<InputTag> ( "PileUpTag", InputTag( "slimmedAddPileupInfo" ) ) ) )
+PhotonJetValidationTreeMaker::PhotonJetValidationTreeMaker( const edm::ParameterSet &iConfig ):
+    photonJetToken_( consumes<View<flashgg::PhotonJetCandidate> >( iConfig.getParameter<InputTag> ( "PhotonJetTag" ) ) ),
+    vertexToken_( consumes<View<reco::Vertex>>( iConfig.getParameter<InputTag> ( "vertexTag" ) ) ),
+    genEventInfoToken_( consumes<GenEventInfoProduct>( iConfig.getParameter<InputTag> ( "GenEventInfo" ) ) ),
+    beamSpotToken_( consumes<reco::BeamSpot>( iConfig.getParameter<InputTag>( "BeamSpotTag" ) ) ),
+    PileUpToken_( consumes<View<PileupSummaryInfo>>( iConfig.getParameter<InputTag> ( "PileUpTag" ) ) )
 {
-    evWeight_   = iConfig.getUntrackedParameter<double>( "evWeight", 1.0 );
+    evWeight_   = iConfig.getParameter<double>( "evWeight" );
 }
 
 
-ConvertedPhotonJetTreeMaker::~ConvertedPhotonJetTreeMaker()
+PhotonJetValidationTreeMaker::~PhotonJetValidationTreeMaker()
 {
 }
 
 void
-ConvertedPhotonJetTreeMaker::analyze( const edm::Event &iEvent, const edm::EventSetup &iSetup )
+PhotonJetValidationTreeMaker::analyze( const edm::Event &iEvent, const edm::EventSetup &iSetup )
 {
 
     // ********************************************************************************
@@ -289,7 +282,7 @@ ConvertedPhotonJetTreeMaker::analyze( const edm::Event &iEvent, const edm::Event
 
 
 void
-ConvertedPhotonJetTreeMaker::beginJob()
+PhotonJetValidationTreeMaker::beginJob()
 {
     GlobalTree = fs_->make<TTree>( "GlobalTree", "global tree" );
     GlobalTree->Branch( "BSsigmaz"  , &globalInfo.BSsigmaz,   "BSsigmaz/F" );
@@ -344,12 +337,12 @@ ConvertedPhotonJetTreeMaker::beginJob()
 }
 
 void
-ConvertedPhotonJetTreeMaker::endJob()
+PhotonJetValidationTreeMaker::endJob()
 {
 }
 
 void
-ConvertedPhotonJetTreeMaker::initEventStructure()
+PhotonJetValidationTreeMaker::initEventStructure()
 {
     globalInfo.BSsigmaz           = -999.; 
     globalInfo.nvtx               = -999.; 
@@ -402,7 +395,7 @@ ConvertedPhotonJetTreeMaker::initEventStructure()
 }
 
 void
-ConvertedPhotonJetTreeMaker::fillDescriptions( edm::ConfigurationDescriptions &descriptions )
+PhotonJetValidationTreeMaker::fillDescriptions( edm::ConfigurationDescriptions &descriptions )
 {
     //The following says we do not know what parameters are allowed so do no validation
     // Please change this to state exactly what you do use, even if it is no parameters
@@ -411,7 +404,8 @@ ConvertedPhotonJetTreeMaker::fillDescriptions( edm::ConfigurationDescriptions &d
     descriptions.addDefault( desc );
 }
 
-int ConvertedPhotonJetTreeMaker::sortedIndex( const unsigned int VtxIndex, const unsigned int sizemax, const Ptr<flashgg::PhotonJetCandidate> photonjet )
+int 
+PhotonJetValidationTreeMaker::sortedIndex( const unsigned int &VtxIndex, const unsigned int &sizemax, const Ptr<flashgg::PhotonJetCandidate> &photonjet )
 {
     for( unsigned int j = 0; j < sizemax; j++ ) {
         int index = photonjet->mvaSortedIndex( j );
@@ -421,7 +415,7 @@ int ConvertedPhotonJetTreeMaker::sortedIndex( const unsigned int VtxIndex, const
     return -1;
 }
 
-DEFINE_FWK_MODULE( ConvertedPhotonJetTreeMaker );
+DEFINE_FWK_MODULE( PhotonJetValidationTreeMaker );
 // Local Variables:
 // mode:c++
 // indent-tabs-mode:nil

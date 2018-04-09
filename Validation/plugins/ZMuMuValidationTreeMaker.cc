@@ -13,11 +13,8 @@
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/Ptr.h"
 
-#include "DataFormats/VertexReco/interface/Vertex.h"
-
 #include "DataFormats/RecoCandidate/interface/RecoCandidate.h"
 #include "SimDataFormats/PileupSummaryInfo/interface/PileupSummaryInfo.h"
-#include "DataFormats/HepMCCandidate/interface/GenParticle.h"
 //for miniAOD:
 #include "DataFormats/PatCandidates/interface/PackedCandidate.h"
 #include "DataFormats/PatCandidates/interface/Muon.h"
@@ -26,8 +23,6 @@
 #include "flashgg/MicroAOD/interface/VertexSelectorBase.h"
 #include "flashgg/DataFormats/interface/VertexCandidateMap.h"
 
-#include "FWCore/Common/interface/TriggerNames.h"
-#include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
 #include "TTree.h"
 
 // **********************************************************************
@@ -43,6 +38,11 @@ using namespace std;
 using namespace edm;
 using namespace reco;
 using namespace math;
+
+
+struct GlobalInfo {
+    int nPU ;
+};
 
 struct DimuonInfo {
 
@@ -110,11 +110,11 @@ struct BackgroundInfo {
 
 // **********************************************************************
 
-class outputAnalyzerDiMuHighMass : public edm::EDAnalyzer
+class ZMuMuValidationTreeMaker : public edm::EDAnalyzer
 {
 public:
-    explicit outputAnalyzerDiMuHighMass( const edm::ParameterSet & );
-    ~outputAnalyzerDiMuHighMass();
+    explicit ZMuMuValidationTreeMaker( const edm::ParameterSet & );
+    ~ZMuMuValidationTreeMaker();
     
     static void fillDescriptions( edm::ConfigurationDescriptions &descriptions );
     
@@ -129,27 +129,29 @@ private:
 
     void initEventStructure();
    
-    float getMCTruthVertexZ( const std::vector<edm::Ptr<reco::GenParticle>>& gens );
-    int getRecoClosestToTrueVertexIndex(  const std::vector<edm::Ptr<reco::GenParticle>>& gens, const vector<edm::Ptr<reco::Vertex> > & vertices, double dzMatch = 50. );
-    int getRecoWithMuonsVertexIndex( const vector<edm::Ptr<reco::Vertex> > & vertices, Ptr<pat::Muon> mu1, Ptr<pat::Muon> mu2, double dzMatch = 0.2 );
-    int sortedIndex( const unsigned int trueVtxIndex, const std::vector<int> VtxSortedIndexVector);
-    std::vector<int> isTightMuonWithoutVtxCut(const vector<edm::Ptr<pat::Muon>> & patMuons); 
+    float getMCTruthVertexZ( const std::vector<edm::Ptr<reco::GenParticle>> &gens );
+    int getRecoClosestToTrueVertexIndex(  const std::vector<edm::Ptr<reco::GenParticle>> &gens, const vector<edm::Ptr<reco::Vertex> > &vertices, const double &dzMatch = 0.2 );
+    int getRecoWithMuonsVertexIndex( const vector<edm::Ptr<reco::Vertex> > &vertices, const Ptr<pat::Muon> &mu1, const Ptr<pat::Muon> &mu2, const double &dzMatch = 0.2 );
+    int sortedIndex( const unsigned int &trueVtxIndex, const std::vector<int> &VtxSortedIndexVector);
+    std::vector<int> isTightMuonWithoutVtxCut(const vector<edm::Ptr<pat::Muon>> &patMuons); 
 
+    edm::EDGetTokenT<View<pat::Muon> > patMuonToken_;
+    edm::EDGetTokenT<edm::View<reco::Vertex> >               vertexTokenWithMu_;
+    edm::EDGetTokenT<edm::View<reco::Vertex> >               vertexTokenNoMu_;
+    edm::EDGetTokenT< VertexCandidateMap > vertexCandidateMapToken_;
+    edm::EDGetTokenT< VertexCandidateMap > vertexCandidateMapNoMuToken_;
+    unique_ptr<VertexSelectorBase> vertexSelector_;
     edm::EDGetTokenT<View<reco::GenParticle> > genParticleToken_;
     edm::EDGetToken genEventInfoToken_;
-    edm::EDGetTokenT<View<pat::Muon> > patMuonToken_;
-    edm::EDGetTokenT<edm::View<reco::Vertex> >               vertexTokenNoMu_;
-    edm::EDGetTokenT<edm::View<reco::Vertex> >               vertexTokenWithMu_;
-    EDGetTokenT< VertexCandidateMap > vertexCandidateMapToken_;
-    EDGetTokenT< VertexCandidateMap > vertexCandidateMapNoMuToken_;
-    unique_ptr<VertexSelectorBase> vertexSelector_;
     edm::EDGetTokenT<reco::BeamSpot > beamSpotToken_;
     edm::EDGetTokenT<edm::View<PileupSummaryInfo> >  PileUpToken_;
 
-    TTree *vtxTree;
-    TTree *signalTree;
-    TTree *backgroundTree;
+    TTree *GlobalTree;
+    TTree *DiMuonTree;
+    TTree *SignalTree;
+    TTree *BackgroundTree;
 
+    GlobalInfo globalInfo;
     DimuonInfo dimuonInfo;
     SignalInfo sigInfo;
     BackgroundInfo bkgInfo;
@@ -161,23 +163,23 @@ private:
 //
 // constructors and destructor
 //
-outputAnalyzerDiMuHighMass::outputAnalyzerDiMuHighMass( const edm::ParameterSet &iConfig ):
-    genParticleToken_(consumes<View<reco::GenParticle> >(iConfig.getUntrackedParameter<InputTag> ("GenParticleTag", InputTag("prunedGenParticles")))),
-    genEventInfoToken_(consumes<GenEventInfoProduct>(iConfig.getParameter <edm::InputTag> ("genEventInfoProduct"))),
-    patMuonToken_( consumes<View<pat::Muon> >( iConfig.getParameter<InputTag>( "patMuonTag" ) ) ),
-    vertexTokenNoMu_( consumes<View<reco::Vertex> >( iConfig.getUntrackedParameter<InputTag> ( "VertexTagNoMu", InputTag( "offlinePrimaryVerticesNoMu" ) ) ) ),
-    vertexTokenWithMu_( consumes<View<reco::Vertex> >( iConfig.getUntrackedParameter<InputTag> ( "VertexTagWithMu", InputTag( "offlinePrimaryVerticesWithMu" ) ) ) ),
+ZMuMuValidationTreeMaker::ZMuMuValidationTreeMaker( const edm::ParameterSet &iConfig ):
+    patMuonToken_( consumes<View<pat::Muon> >( iConfig.getParameter<InputTag>( "MuonTag" ) ) ),
+    vertexTokenWithMu_( consumes<View<reco::Vertex> >( iConfig.getParameter<InputTag> ( "VertexTagWithMu" ) ) ),
+    vertexTokenNoMu_( consumes<View<reco::Vertex> >( iConfig.getParameter<InputTag> ( "VertexTagNoMu" ) ) ),
     vertexCandidateMapToken_( consumes<VertexCandidateMap>( iConfig.getParameter<InputTag>( "VertexCandidateMapTag" ) ) ),
     vertexCandidateMapNoMuToken_( consumes<VertexCandidateMap>( iConfig.getParameter<InputTag>( "VertexCandidateMapTagNoMu" ) ) ),
-    beamSpotToken_( consumes<reco::BeamSpot >( iConfig.getUntrackedParameter<InputTag>( "BeamSpotTag", InputTag( "offlineBeamSpot" ) ) ) ),
-    PileUpToken_( consumes<View<PileupSummaryInfo> >( iConfig.getUntrackedParameter<InputTag> ( "PileUpTag", InputTag( "slimmedAddPileupInfo" ) ) ) )
+    genParticleToken_( consumes<View<reco::GenParticle> >( iConfig.getParameter<InputTag> ( "GenParticleTag" ) ) ),
+    genEventInfoToken_( consumes<GenEventInfoProduct>( iConfig.getParameter <edm::InputTag> ( "genEventInfoProduct" ) ) ),
+    beamSpotToken_( consumes<reco::BeamSpot >( iConfig.getParameter<InputTag>( "BeamSpotTag" ) ) ),
+    PileUpToken_( consumes<View<PileupSummaryInfo> >( iConfig.getParameter<InputTag> ( "PileUpTag" ) ) )
 {
         const std::string &VertexSelectorName = iConfig.getParameter<std::string>( "VertexSelectorName" );
         vertexSelector_.reset( FlashggVertexSelectorFactory::get()->create( VertexSelectorName, iConfig ) );
 }
 
 
-outputAnalyzerDiMuHighMass::~outputAnalyzerDiMuHighMass()
+ZMuMuValidationTreeMaker::~ZMuMuValidationTreeMaker()
 {
 
 
@@ -186,13 +188,13 @@ outputAnalyzerDiMuHighMass::~outputAnalyzerDiMuHighMass()
 
 
 void
-outputAnalyzerDiMuHighMass::analyze( const edm::Event &iEvent, const edm::EventSetup &iSetup )
+ZMuMuValidationTreeMaker::analyze( const edm::Event &iEvent, const edm::EventSetup &iSetup )
 {
     Handle<View<reco::GenParticle> > genParticles;
-    iEvent.getByToken(genParticleToken_,genParticles);
+    iEvent.getByToken( genParticleToken_, genParticles );
 
     Handle<GenEventInfoProduct> genEventInfo;
-    iEvent.getByToken(genEventInfoToken_,genEventInfo);
+    iEvent.getByToken( genEventInfoToken_, genEventInfo );
 
     Handle<View<pat::Muon> >  patMuons;
     iEvent.getByToken( patMuonToken_, patMuons );
@@ -230,27 +232,24 @@ outputAnalyzerDiMuHighMass::analyze( const edm::Event &iEvent, const edm::EventS
 
         dimuonInfo.mcWeight = genEventInfo->weight();
 
-        int trueRecoVtxIdx = getRecoClosestToTrueVertexIndex( genParticles->ptrs(), primaryVerticesWithMu->ptrs());
-        int trueRecoVtxIdxNoMu = getRecoClosestToTrueVertexIndex( genParticles->ptrs(), primaryVerticesNoMu->ptrs());
+        int trueRecoVtxIdx = getRecoClosestToTrueVertexIndex( genParticles->ptrs(), primaryVerticesWithMu->ptrs() );
+        int trueRecoVtxIdxNoMu = getRecoClosestToTrueVertexIndex( genParticles->ptrs(), primaryVerticesNoMu->ptrs() );
 
         if(trueRecoVtxIdx != -1)     dimuonInfo.zRecoTrue     = primaryVerticesWithMu->ptrAt( trueRecoVtxIdx )->z();    
         if(trueRecoVtxIdxNoMu != -1) dimuonInfo.zRecoTrueNoMu = primaryVerticesNoMu->ptrAt( trueRecoVtxIdxNoMu )->z();
         dimuonInfo.zTrue = getMCTruthVertexZ( genParticles->ptrs() );
         
-
-        float nPu = -999.;
-        
         // pileup info
         for( unsigned int PVI = 0; PVI < PileupInfos->size(); ++PVI ) {
             Int_t pu_bunchcrossing = PileupInfos->ptrAt( PVI )->getBunchCrossing();
             if( pu_bunchcrossing == 0 ) {
-                nPu = PileupInfos->ptrAt( PVI )->getTrueNumInteractions();
+                globalInfo.nPU = PileupInfos->ptrAt( PVI )->getTrueNumInteractions();
+                dimuonInfo.nPU = PileupInfos->ptrAt( PVI )->getTrueNumInteractions();
                 break;
             }
         }
-        
-        dimuonInfo.nPU = nPu;
     }
+    GlobalTree->Fill();
     
     
     vector<int> muon_index = isTightMuonWithoutVtxCut(patMuons->ptrs());
@@ -321,7 +320,7 @@ outputAnalyzerDiMuHighMass::analyze( const edm::Event &iEvent, const edm::EventS
             if( iFromMuonsNoMu != -1 && iFromMuonsWithMu != -1 ) {
                 dimuonInfo.zRecoFromMu = primaryVerticesWithMu->ptrAt(iFromMuonsWithMu)->z();
                 dimuonInfo.zRecoFromMuNoMu = primaryVerticesNoMu->ptrAt(iFromMuonsNoMu)->z();
-                vtxTree->Fill();
+                DiMuonTree->Fill();
 
                 //Right Vertex
                 vector<int> VtxSortedIndexVector;
@@ -329,7 +328,7 @@ outputAnalyzerDiMuHighMass::analyze( const edm::Event &iEvent, const edm::EventS
                 unsigned int trueVtxIndex = iFromMuonsNoMu;
                 int trueVtxSortedIndex = sortedIndex(trueVtxIndex, VtxSortedIndexVector);
 
-                if (trueVtxSortedIndex < 0) {    
+                if (trueVtxSortedIndex != -1) {    
                     vector<float> info;
                     vertexSelector_->getInfoFromLastSelectionForVtxIdx( info , (unsigned int) trueVtxSortedIndex );
                     sigInfo.vtxIdmva  = info[0];
@@ -338,7 +337,7 @@ outputAnalyzerDiMuHighMass::analyze( const edm::Event &iEvent, const edm::EventS
                     sigInfo.PtAsym    = info[3];
                     sigInfo.DZtrue    = primaryVerticesNoMu->ptrAt(trueVtxIndex)->position().z() - primaryVerticesWithMu->ptrAt(iFromMuonsWithMu)->position().z();
 
-                    signalTree->Fill();
+                    SignalTree->Fill();
                 }
 
                 //Wrong Vertex
@@ -353,20 +352,18 @@ outputAnalyzerDiMuHighMass::analyze( const edm::Event &iEvent, const edm::EventS
                 int randVtxIndex = -999;
                 if( irand != -999 ) { randVtxIndex = notrueVtxIndexVector[irand]; }
 
-                int randVtxSortedIndexI = sortedIndex(randVtxIndex, VtxSortedIndexVector);
+                int randVtxSortedIndex = sortedIndex(randVtxIndex, VtxSortedIndexVector);
 
-                if( randVtxSortedIndexI != -1 ) {
-                    unsigned int randVtxSortedIndex = randVtxSortedIndexI;
-
+                if( randVtxSortedIndex != -1 ) {
                     vector<float> info;
-                    vertexSelector_->getInfoFromLastSelectionForVtxIdx( info , randVtxSortedIndex );
+                    vertexSelector_->getInfoFromLastSelectionForVtxIdx( info , (unsigned int) randVtxSortedIndex );
                     bkgInfo.vtxIdmva  = info[0];
                     bkgInfo.LogSumPt2 = info[1];
                     bkgInfo.PtBal     = info[2];
                     bkgInfo.PtAsym    = info[3];
                     bkgInfo.DZtrue    = primaryVerticesNoMu->ptrAt(randVtxIndex)->position().z() - primaryVerticesWithMu->ptrAt(iFromMuonsWithMu)->position().z();
 
-                    backgroundTree->Fill();
+                    BackgroundTree->Fill();
                 }
             }
 
@@ -377,82 +374,87 @@ outputAnalyzerDiMuHighMass::analyze( const edm::Event &iEvent, const edm::EventS
 
 
 void
-outputAnalyzerDiMuHighMass::beginJob()
+ZMuMuValidationTreeMaker::beginJob()
 {
 
-    vtxTree = fs_->make<TTree>( "vtxTree", "vtxTree" );   
-    vtxTree->Branch( "BSz"              , &dimuonInfo.BSz              , "BSz/F"             );  
-    vtxTree->Branch( "BSsigmaz"         , &dimuonInfo.BSsigmaz         , "BSsigmaz/F"        );  
-    vtxTree->Branch( "mcWeight"         , &dimuonInfo.mcWeight         , "mcWeight/F"        );  
-    vtxTree->Branch( "zRecoTrue"        , &dimuonInfo.zRecoTrue        , "zRecoTrue/F"       );  
-    vtxTree->Branch( "zRecoTrueNoMu"    , &dimuonInfo.zRecoTrueNoMu    , "zRecoTrueNoMu/F"   );  
-    vtxTree->Branch( "zTrue"            , &dimuonInfo.zTrue            , "zTrue/F"           );  
-    vtxTree->Branch( "nPU"              , &dimuonInfo.nPU              , "nPU/I"             );  
-    vtxTree->Branch( "dimuon_mass"      , &dimuonInfo.dimuon_mass      , "dimuon_mass/F"     );  
-    vtxTree->Branch( "dimuon_pt"        , &dimuonInfo.dimuon_pt        , "dimuon_pt/F"       );  
-    vtxTree->Branch( "muon1_pt"         , &dimuonInfo.muon1_pt         , "muon1_pt/F"        );  
-    vtxTree->Branch( "muon1_eta"        , &dimuonInfo.muon1_eta        , "muon1_eta/F"       );  
-    vtxTree->Branch( "muon2_pt"         , &dimuonInfo.muon2_pt         , "muon2_pt/F"        );  
-    vtxTree->Branch( "muon2_eta"        , &dimuonInfo.muon2_eta        , "muon2_eta/F"       );  
-    vtxTree->Branch( "zChosenWithMu"    , &dimuonInfo.zChosenWithMu    , "zChosenWithMu/F"   );  
-    vtxTree->Branch( "zChosenNoMu"      , &dimuonInfo.zChosenNoMu      , "zChosenNoMu/F"     );  
-    vtxTree->Branch( "zRecoFromMu"      , &dimuonInfo.zRecoFromMu      , "zRecoFromMu/F"     );  
-    vtxTree->Branch( "zRecoFromMuNoMu"  , &dimuonInfo.zRecoFromMuNoMu  , "zRecoFromMuNoMu/F" );  
-    vtxTree->Branch( "mvaProbWithMu"    , &dimuonInfo.mvaProbWithMu    , "mvaProbWithMu/F"   );  
-    vtxTree->Branch( "logSumPt2WithMu"  , &dimuonInfo.logSumPt2WithMu  , "logSumPt2WithMu/F" );  
-    vtxTree->Branch( "ptBalWithMu"      , &dimuonInfo.ptBalWithMu      , "ptBalWithMu/F"     );  
-    vtxTree->Branch( "ptAsymWithMu"     , &dimuonInfo.ptAsymWithMu     , "ptAsymWithMu/F"    );  
-    vtxTree->Branch( "nVtxWithMu"       , &dimuonInfo.nVtxWithMu       , "nVtxWithMu/I"      );  
-    vtxTree->Branch( "mva0WithMu"       , &dimuonInfo.mva0WithMu       , "mva0WithMu/F"      );  
-    vtxTree->Branch( "mva1WithMu"       , &dimuonInfo.mva1WithMu       , "mva1WithMu/F"      );  
-    vtxTree->Branch( "mva2WithMu"       , &dimuonInfo.mva2WithMu       , "mva2WithMu/F"      );  
-    vtxTree->Branch( "dZ1WithMu"        , &dimuonInfo.dZ1WithMu        , "dZ1WithMu/F"       );  
-    vtxTree->Branch( "dZ2WithMu"        , &dimuonInfo.dZ2WithMu        , "dZ2WithMu/F"       );  
-    vtxTree->Branch( "mvaProbNoMu"      , &dimuonInfo.mvaProbNoMu      , "mvaProbNoMu/F"     );  
-    vtxTree->Branch( "logSumPt2NoMu"    , &dimuonInfo.logSumPt2NoMu    , "logSumPt2NoMu/F"   );  
-    vtxTree->Branch( "ptBalNoMu"        , &dimuonInfo.ptBalNoMu        , "ptBalNoMu/F"       );  
-    vtxTree->Branch( "ptAsymNoMu"       , &dimuonInfo.ptAsymNoMu       , "ptAsymNoMu/F"      );  
-    vtxTree->Branch( "nVtxNoMu"         , &dimuonInfo.nVtxNoMu         , "nVtxNoMu/I"        );  
-    vtxTree->Branch( "mva0NoMu"         , &dimuonInfo.mva0NoMu         , "mva0NoMu/F"        );  
-    vtxTree->Branch( "mva1NoMu"         , &dimuonInfo.mva1NoMu         , "mva1NoMu/F"        );  
-    vtxTree->Branch( "mva2NoMu"         , &dimuonInfo.mva2NoMu         , "mva2NoMu/F"        );  
-    vtxTree->Branch( "dZ1NoMu"          , &dimuonInfo.dZ1NoMu          , "dZ1NoMu/F"         );  
-    vtxTree->Branch( "dZ2NoMu"          , &dimuonInfo.dZ2NoMu          , "dZ2NoMu/F"         );  
+    GlobalTree = fs_->make<TTree>( "GlobalTree", "GlobalTree" );   
+    GlobalTree->Branch( "nPU"              , &globalInfo.nPU              , "nPU/I"             );  
 
-    signalTree = fs_->make<TTree>( "signalTree", "per-diphoton tree" );
-    signalTree->Branch( "BSz"        , &dimuonInfo.BSz       , "BSz/F"      );
-    signalTree->Branch( "BSsigmaz"   , &dimuonInfo.BSsigmaz  , "BSsigmaz/F" );
-    signalTree->Branch( "mcWeight"   , &dimuonInfo.mcWeight  , "mcWeight/F" );
-    signalTree->Branch( "nPU"        , &dimuonInfo.nPU       , "nPU/I"      );
-    signalTree->Branch( "nvertex"    , &dimuonInfo.nVtxNoMu  , "nvertex/I"  );
-    signalTree->Branch( "vtxIdmva"   , &sigInfo.vtxIdmva     , "vtxIdmva/F" );
-    signalTree->Branch( "LogSumPt2"  , &sigInfo.LogSumPt2    , "LogSumPt2/F");
-    signalTree->Branch( "PtBal"      , &sigInfo.PtBal        , "PtBal/F"    );
-    signalTree->Branch( "PtAsym"     , &sigInfo.PtAsym       , "PtAsym/F"   );
-    signalTree->Branch( "DZtrue"     , &sigInfo.DZtrue       , "DZtrue/F"   );
+    DiMuonTree = fs_->make<TTree>( "DiMuonTree", "DiMuonTree" );   
+    DiMuonTree->Branch( "BSz"              , &dimuonInfo.BSz              , "BSz/F"             );  
+    DiMuonTree->Branch( "BSsigmaz"         , &dimuonInfo.BSsigmaz         , "BSsigmaz/F"        );  
+    DiMuonTree->Branch( "mcWeight"         , &dimuonInfo.mcWeight         , "mcWeight/F"        );  
+    DiMuonTree->Branch( "zRecoTrue"        , &dimuonInfo.zRecoTrue        , "zRecoTrue/F"       );  
+    DiMuonTree->Branch( "zRecoTrueNoMu"    , &dimuonInfo.zRecoTrueNoMu    , "zRecoTrueNoMu/F"   );  
+    DiMuonTree->Branch( "zTrue"            , &dimuonInfo.zTrue            , "zTrue/F"           );  
+    DiMuonTree->Branch( "nPU"              , &dimuonInfo.nPU              , "nPU/I"             );  
+    DiMuonTree->Branch( "dimuon_mass"      , &dimuonInfo.dimuon_mass      , "dimuon_mass/F"     );  
+    DiMuonTree->Branch( "dimuon_pt"        , &dimuonInfo.dimuon_pt        , "dimuon_pt/F"       );  
+    DiMuonTree->Branch( "muon1_pt"         , &dimuonInfo.muon1_pt         , "muon1_pt/F"        );  
+    DiMuonTree->Branch( "muon1_eta"        , &dimuonInfo.muon1_eta        , "muon1_eta/F"       );  
+    DiMuonTree->Branch( "muon2_pt"         , &dimuonInfo.muon2_pt         , "muon2_pt/F"        );  
+    DiMuonTree->Branch( "muon2_eta"        , &dimuonInfo.muon2_eta        , "muon2_eta/F"       );  
+    DiMuonTree->Branch( "zChosenWithMu"    , &dimuonInfo.zChosenWithMu    , "zChosenWithMu/F"   );  
+    DiMuonTree->Branch( "zChosenNoMu"      , &dimuonInfo.zChosenNoMu      , "zChosenNoMu/F"     );  
+    DiMuonTree->Branch( "zRecoFromMu"      , &dimuonInfo.zRecoFromMu      , "zRecoFromMu/F"     );  
+    DiMuonTree->Branch( "zRecoFromMuNoMu"  , &dimuonInfo.zRecoFromMuNoMu  , "zRecoFromMuNoMu/F" );  
+    DiMuonTree->Branch( "mvaProbWithMu"    , &dimuonInfo.mvaProbWithMu    , "mvaProbWithMu/F"   );  
+    DiMuonTree->Branch( "logSumPt2WithMu"  , &dimuonInfo.logSumPt2WithMu  , "logSumPt2WithMu/F" );  
+    DiMuonTree->Branch( "ptBalWithMu"      , &dimuonInfo.ptBalWithMu      , "ptBalWithMu/F"     );  
+    DiMuonTree->Branch( "ptAsymWithMu"     , &dimuonInfo.ptAsymWithMu     , "ptAsymWithMu/F"    );  
+    DiMuonTree->Branch( "nVtxWithMu"       , &dimuonInfo.nVtxWithMu       , "nVtxWithMu/I"      );  
+    DiMuonTree->Branch( "mva0WithMu"       , &dimuonInfo.mva0WithMu       , "mva0WithMu/F"      );  
+    DiMuonTree->Branch( "mva1WithMu"       , &dimuonInfo.mva1WithMu       , "mva1WithMu/F"      );  
+    DiMuonTree->Branch( "mva2WithMu"       , &dimuonInfo.mva2WithMu       , "mva2WithMu/F"      );  
+    DiMuonTree->Branch( "dZ1WithMu"        , &dimuonInfo.dZ1WithMu        , "dZ1WithMu/F"       );  
+    DiMuonTree->Branch( "dZ2WithMu"        , &dimuonInfo.dZ2WithMu        , "dZ2WithMu/F"       );  
+    DiMuonTree->Branch( "mvaProbNoMu"      , &dimuonInfo.mvaProbNoMu      , "mvaProbNoMu/F"     );  
+    DiMuonTree->Branch( "logSumPt2NoMu"    , &dimuonInfo.logSumPt2NoMu    , "logSumPt2NoMu/F"   );  
+    DiMuonTree->Branch( "ptBalNoMu"        , &dimuonInfo.ptBalNoMu        , "ptBalNoMu/F"       );  
+    DiMuonTree->Branch( "ptAsymNoMu"       , &dimuonInfo.ptAsymNoMu       , "ptAsymNoMu/F"      );  
+    DiMuonTree->Branch( "nVtxNoMu"         , &dimuonInfo.nVtxNoMu         , "nVtxNoMu/I"        );  
+    DiMuonTree->Branch( "mva0NoMu"         , &dimuonInfo.mva0NoMu         , "mva0NoMu/F"        );  
+    DiMuonTree->Branch( "mva1NoMu"         , &dimuonInfo.mva1NoMu         , "mva1NoMu/F"        );  
+    DiMuonTree->Branch( "mva2NoMu"         , &dimuonInfo.mva2NoMu         , "mva2NoMu/F"        );  
+    DiMuonTree->Branch( "dZ1NoMu"          , &dimuonInfo.dZ1NoMu          , "dZ1NoMu/F"         );  
+    DiMuonTree->Branch( "dZ2NoMu"          , &dimuonInfo.dZ2NoMu          , "dZ2NoMu/F"         );  
 
-    backgroundTree = fs_->make<TTree>( "backgroundTree", "per-diphoton tree" );
-    backgroundTree->Branch( "BSz"        , &dimuonInfo.BSz       , "BSz/F"      );
-    backgroundTree->Branch( "BSsigmaz"   , &dimuonInfo.BSsigmaz  , "BSsigmaz/F" );
-    backgroundTree->Branch( "mcWeight"   , &dimuonInfo.mcWeight  , "mcWeight/F" );
-    backgroundTree->Branch( "nPU"        , &dimuonInfo.nPU       , "nPU/I"      );
-    backgroundTree->Branch( "nvertex"    , &dimuonInfo.nVtxNoMu  , "nvertex/I"  );
-    backgroundTree->Branch( "vtxIdmva"   , &bkgInfo.vtxIdmva     , "vtxIdmva/F" );
-    backgroundTree->Branch( "LogSumPt2"  , &bkgInfo.LogSumPt2    , "LogSumPt2/F");
-    backgroundTree->Branch( "PtBal"      , &bkgInfo.PtBal        , "PtBal/F"    );
-    backgroundTree->Branch( "PtAsym"     , &bkgInfo.PtAsym       , "PtAsym/F"   );
-    backgroundTree->Branch( "DZtrue"     , &bkgInfo.DZtrue       , "DZtrue/F"   );
+    SignalTree = fs_->make<TTree>( "SignalTree", "SignalTree" );
+    SignalTree->Branch( "BSz"        , &dimuonInfo.BSz       , "BSz/F"      );
+    SignalTree->Branch( "BSsigmaz"   , &dimuonInfo.BSsigmaz  , "BSsigmaz/F" );
+    SignalTree->Branch( "mcWeight"   , &dimuonInfo.mcWeight  , "mcWeight/F" );
+    SignalTree->Branch( "nPU"        , &dimuonInfo.nPU       , "nPU/I"      );
+    SignalTree->Branch( "nvertex"    , &dimuonInfo.nVtxNoMu  , "nvertex/I"  );
+    SignalTree->Branch( "vtxIdmva"   , &sigInfo.vtxIdmva     , "vtxIdmva/F" );
+    SignalTree->Branch( "LogSumPt2"  , &sigInfo.LogSumPt2    , "LogSumPt2/F");
+    SignalTree->Branch( "PtBal"      , &sigInfo.PtBal        , "PtBal/F"    );
+    SignalTree->Branch( "PtAsym"     , &sigInfo.PtAsym       , "PtAsym/F"   );
+    SignalTree->Branch( "DZtrue"     , &sigInfo.DZtrue       , "DZtrue/F"   );
+
+    BackgroundTree = fs_->make<TTree>( "backgroundTree", "BackgroundTree" );
+    BackgroundTree->Branch( "BSz"        , &dimuonInfo.BSz       , "BSz/F"      );
+    BackgroundTree->Branch( "BSsigmaz"   , &dimuonInfo.BSsigmaz  , "BSsigmaz/F" );
+    BackgroundTree->Branch( "mcWeight"   , &dimuonInfo.mcWeight  , "mcWeight/F" );
+    BackgroundTree->Branch( "nPU"        , &dimuonInfo.nPU       , "nPU/I"      );
+    BackgroundTree->Branch( "nvertex"    , &dimuonInfo.nVtxNoMu  , "nvertex/I"  );
+    BackgroundTree->Branch( "vtxIdmva"   , &bkgInfo.vtxIdmva     , "vtxIdmva/F" );
+    BackgroundTree->Branch( "LogSumPt2"  , &bkgInfo.LogSumPt2    , "LogSumPt2/F");
+    BackgroundTree->Branch( "PtBal"      , &bkgInfo.PtBal        , "PtBal/F"    );
+    BackgroundTree->Branch( "PtAsym"     , &bkgInfo.PtAsym       , "PtAsym/F"   );
+    BackgroundTree->Branch( "DZtrue"     , &bkgInfo.DZtrue       , "DZtrue/F"   );
 
 }
 
 void
-outputAnalyzerDiMuHighMass::endJob()
+ZMuMuValidationTreeMaker::endJob()
 {
 }
 
 void
-outputAnalyzerDiMuHighMass::initEventStructure()
+ZMuMuValidationTreeMaker::initEventStructure()
 {
+    globalInfo.nPU             = -999;
+
     dimuonInfo.BSz             = -999.; 
     dimuonInfo.BSsigmaz        = -999.; 
     dimuonInfo.mcWeight        = -999.; 
@@ -505,7 +507,8 @@ outputAnalyzerDiMuHighMass::initEventStructure()
 
 }
 
-int outputAnalyzerDiMuHighMass::getRecoWithMuonsVertexIndex( const vector<edm::Ptr<reco::Vertex> > & vertices, Ptr<pat::Muon> mu1, Ptr<pat::Muon> mu2, double dzMatch)
+int 
+ZMuMuValidationTreeMaker::getRecoWithMuonsVertexIndex( const vector<edm::Ptr<reco::Vertex> > &vertices, const Ptr<pat::Muon> &mu1, const Ptr<pat::Muon> &mu2, const double &dzMatch)
 {
 
     double IP1 = mu1->vz();
@@ -544,7 +547,7 @@ int outputAnalyzerDiMuHighMass::getRecoWithMuonsVertexIndex( const vector<edm::P
 
 
 float 
-outputAnalyzerDiMuHighMass::getMCTruthVertexZ( const std::vector<edm::Ptr<reco::GenParticle>>& gens )
+ZMuMuValidationTreeMaker::getMCTruthVertexZ( const std::vector<edm::Ptr<reco::GenParticle>> &gens )
 {
     float zTrue = 999.;
     for( unsigned int genLoop = 0 ; genLoop < gens.size(); genLoop++ ) {
@@ -556,7 +559,7 @@ outputAnalyzerDiMuHighMass::getMCTruthVertexZ( const std::vector<edm::Ptr<reco::
     return zTrue;
 }
 
-int outputAnalyzerDiMuHighMass::getRecoClosestToTrueVertexIndex(  const std::vector<edm::Ptr<reco::GenParticle>>& gens , const vector<edm::Ptr<reco::Vertex> > & vertices, double dzMatch )
+int ZMuMuValidationTreeMaker::getRecoClosestToTrueVertexIndex( const std::vector<edm::Ptr<reco::GenParticle>> &gens , const vector<edm::Ptr<reco::Vertex> > &vertices, const double &dzMatch )
 {
 
     reco::Vertex::Point hardVertex( 0, 0, 0 );
@@ -586,7 +589,7 @@ int outputAnalyzerDiMuHighMass::getRecoClosestToTrueVertexIndex(  const std::vec
 }
 
 int
-outputAnalyzerDiMuHighMass::sortedIndex( const unsigned int trueVtxIndex, const vector<int> VtxSortedIndexVector )
+ZMuMuValidationTreeMaker::sortedIndex( const unsigned int &trueVtxIndex, const vector<int> &VtxSortedIndexVector )
 {
     for (unsigned int i = 0; i < VtxSortedIndexVector.size(); i++) {
         int index = VtxSortedIndexVector[i];
@@ -597,7 +600,7 @@ outputAnalyzerDiMuHighMass::sortedIndex( const unsigned int trueVtxIndex, const 
 }
 
 std::vector<int>
-outputAnalyzerDiMuHighMass::isTightMuonWithoutVtxCut(const vector<edm::Ptr<pat::Muon>> & patMuons) 
+ZMuMuValidationTreeMaker::isTightMuonWithoutVtxCut(const vector<edm::Ptr<pat::Muon>> &patMuons) 
 {
     vector<int> muon_index;
     for ( unsigned int i = 0; i < patMuons.size(); i++) {
@@ -618,7 +621,7 @@ outputAnalyzerDiMuHighMass::isTightMuonWithoutVtxCut(const vector<edm::Ptr<pat::
 }
 
 void
-outputAnalyzerDiMuHighMass::fillDescriptions( edm::ConfigurationDescriptions &descriptions )
+ZMuMuValidationTreeMaker::fillDescriptions( edm::ConfigurationDescriptions &descriptions )
 {
     //The following says we do not know what parameters are allowed so do no validation
     // Please change this to state exactly what you do use, even if it is no parameters
@@ -628,7 +631,7 @@ outputAnalyzerDiMuHighMass::fillDescriptions( edm::ConfigurationDescriptions &de
 }
 
 
-DEFINE_FWK_MODULE( outputAnalyzerDiMuHighMass );
+DEFINE_FWK_MODULE( ZMuMuValidationTreeMaker );
 // Local Variables:
 // mode:c++
 // indent-tabs-mode:nil

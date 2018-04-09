@@ -1,43 +1,40 @@
 import FWCore.ParameterSet.Config as cms
 import FWCore.Utilities.FileUtils as FileUtils
 
-process = cms.Process("vertexTrainingTreeMaker")
-
-process.load("FWCore.MessageService.MessageLogger_cfi")
+process = cms.Process("PhotonJetValidationTreeMaker")
 
 # geometry and global tag:
-
 process.load("Configuration.StandardSequences.GeometryDB_cff")
 process.load("Configuration.StandardSequences.MagneticField_cff")
 process.load("Configuration.StandardSequences.FrontierConditions_GlobalTag_cff")
-#process.GlobalTag.globaltag = '94X_mc2017_realistic_v10'
-process.GlobalTag.globaltag = '94X_dataRun2_ReReco_EOY17_v2'
+from Configuration.AlCa.GlobalTag import GlobalTag
+#process.GlobalTag = GlobalTag(process.GlobalTag, '94X_dataRun2_ReReco_EOY17_v2')
+process.GlobalTag = GlobalTag(process.GlobalTag, '94X_mc2017_realistic_v12')
 
-#**************************************************************
+process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(1000) )
 
-process.options = cms.untracked.PSet( wantSummary = cms.untracked.bool(True) )
+process.load("FWCore.MessageService.MessageLogger_cfi")
 process.MessageLogger.cerr.FwkReport.reportEvery = cms.untracked.int32( 100 )
-process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(100) )
+process.options = cms.untracked.PSet( wantSummary = cms.untracked.bool(True) )
+
+process.source = cms.Source ("PoolSource",
+        fileNames = cms.untracked.vstring(
+'/store/mc/RunIIFall17MiniAOD/GJets_HT-200To400_TuneCP5_13TeV-madgraphMLM-pythia8/MINIAODSIM/94X_mc2017_realistic_v10-v2/10000/28BD4EBE-67F8-E711-A645-5065F37D4131.root'
+        )
+)
+
+process.TFileService = cms.Service("TFileService",
+                                   fileName = cms.string("photonJetTree.root")
+)
 
 
-readFiles = cms.untracked.vstring()
-secFiles = cms.untracked.vstring()
-process.source = cms.Source ("PoolSource",fileNames = readFiles, secondaryFileNames = secFiles)
-
-readFiles.extend( [
-       '/store/mc/RunIIFall17MiniAOD/GJets_HT-200To400_TuneCP5_13TeV-madgraphMLM-pythia8/MINIAODSIM/94X_mc2017_realistic_v10-v2/10000/28BD4EBE-67F8-E711-A645-5065F37D4131.root' ] );
-
-secFiles.extend( [
-               ] )
-
+#Sequence builder
 #**************************************************************
+process.load("flashggDiphotonVtxPlugins.Validation.flashggPhotonJetValidationSequence_cff")
+#process.flashggPhotonJetValidationSequence.remove(process.flashggMicroAODGenSequence)
 
-#process.load("flashgg/MicroAOD/flashggMicroAODSequence_cff")
-process.load("flashgg/MicroAOD/flashggMicroAODPhotonJetValidationSequence_cff")
-process.flashggMicroAODPhotonJetValidationSequence.remove(process.flashggMicroAODGenSequence)
-
-process.flashggPhotonJet.vertexIdMVAweightfile = cms.FileInPath("flashgg/Validation/data/TMVAClassification_BDTVtxId_SL_2017newResoV2.xml")
-process.flashggPhotonJet.vertexProbMVAweightfile = cms.FileInPath("flashgg/Validation/data/TMVAClassification_BDTVtxProb_SL_2017newResoV2.xml")
+process.flashggPhotonJet.vertexIdMVAweightfile = cms.FileInPath("flashggDiphotonVtxPlugins/Validation/data/TMVAClassification_BDTVtxId_SL_2017.xml")
+process.flashggPhotonJet.vertexProbMVAweightfile = cms.FileInPath("flashggDiphotonVtxPlugins/Validation/data/TMVAClassification_BDTVtxProb_SL_2017.xml")
 process.flashggPhotonJet.useSingleLeg=cms.bool(True)
 process.flashggPhotonJet.sigma1Pix               = cms.double( 0.00800379 )
 process.flashggPhotonJet.sigma1Tib               = cms.double( 0.502127   )
@@ -65,15 +62,18 @@ process.flashggPhotonJet.singlelegsigma2Tid      = cms.double( 0.421378   )
 process.flashggPhotonJet.singlelegsigma2Tec      = cms.double( 0.977421   )
 
 
-process.commissioning = cms.EDAnalyzer('ConvertedPhotonJetTreeMaker',
-                                       PhotonJetTag=cms.untracked.InputTag('flashggPhotonJet'),
-                                       BeamSpotTag=cms.untracked.InputTag('offlineBeamSpot'),
-                                       evWeight = cms.untracked.double(1.00000) #Data
-#                                       evWeight = cms.untracked.double(1.00000) #GJets_HT-40To100
-#                                       evWeight = cms.untracked.double(0.44768) #GJets_HT-100To200
-#                                       evWeight = cms.untracked.double(0.11234) #GJets_HT-200To400
-#                                       evWeight = cms.untracked.double(0.01332) #GJets_HT-400To600
-#                                       evWeight = cms.untracked.double(0.00451) #GJets_HT-600ToInf
+process.commissioning = cms.EDAnalyzer('PhotonJetValidationTreeMaker',
+                                       PhotonJetTag=cms.InputTag('flashggPhotonJet'),
+                                       vertexTag=cms.InputTag('offlineSlimmedPrimaryVertices'),
+                                       GenEventInfo=cms.InputTag('generator'),
+                                       BeamSpotTag=cms.InputTag('offlineBeamSpot'),
+                                       PileUpTag=cms.InputTag('slimmedAddPileupInfo'),
+#                                       evWeight = cms.double(1.00000) #Data
+#                                       evWeight = cms.double(1.00000) #GJets_HT-40To100
+#                                       evWeight = cms.double(0.44768) #GJets_HT-100To200
+#                                       evWeight = cms.double(0.11234) #GJets_HT-200To400
+#                                       evWeight = cms.double(0.01332) #GJets_HT-400To600
+                                       evWeight = cms.double(0.00451) #GJets_HT-600ToInf
 )
 
 from HLTrigger.HLTfilters.hltHighLevel_cfi import hltHighLevel
@@ -83,9 +83,12 @@ process.hltHighLevel= hltHighLevel.clone(HLTPaths = cms.vstring("HLT_Photon50_v*
 from PhysicsTools.SelectorUtils.tools.vid_id_tools import DataFormat,switchOnVIDPhotonIdProducer,setupAllVIDIdsInModule,setupVIDPhotonSelection
 dataFormat = DataFormat.MiniAOD
 switchOnVIDPhotonIdProducer(process, DataFormat.MiniAOD)
-my_id_modules = ['RecoEgamma.PhotonIdentification.Identification.mvaPhotonID_Spring16_nonTrig_V1_cff']
+#my_id_modules = ['RecoEgamma.PhotonIdentification.Identification.mvaPhotonID_Spring16_nonTrig_V1_cff']
+my_id_modules = ['RecoEgamma.PhotonIdentification.Identification.mvaPhotonID_Fall17_94X_V1_cff']
 for idmod in my_id_modules:
     setupAllVIDIdsInModule(process,idmod,setupVIDPhotonSelection)
+process.flashggPhotons.effAreasConfigFile = cms.FileInPath("RecoEgamma/PhotonIdentification/data/Fall17/effAreaPhotons_cone03_pfPhotons_90percentBased_TrueVtx.txt")
+process.flashggPhotons.egmMvaValuesMap = cms.InputTag("photonMVAValueMapProducer:PhotonMVAEstimatorRunIIFall17v1Values")
 
 process.RandomNumberGeneratorService = cms.Service("RandomNumberGeneratorService")
 process.RandomNumberGeneratorService.flashggRandomizedPhotons = cms.PSet(
@@ -95,9 +98,11 @@ process.RandomNumberGeneratorService.flashggRandomizedPhotons = cms.PSet(
 #**************************************************************
 
 process.TFileService = cms.Service("TFileService",
-                                   fileName = cms.string("photonJetTree.root")
+                                   fileName = cms.string("PhotonJetTree.root")
 )
 
-process.p = cms.Path(process.flashggMicroAODPhotonJetValidationSequence*process.egmPhotonIDSequence* process.hltHighLevel* process.commissioning)
-#process.p = cms.Path(process.flashggMicroAODSequence*process.egmPhotonIDSequence*process.commissioning)
-#process.p = cms.Path(process.flashggMicroAODSequence*process.commissioning)
+process.p = cms.Path(process.flashggPhotonJetValidationSequence
+                    *process.egmPhotonIDSequence
+                    *process.hltHighLevel
+                    *process.commissioning
+                    )
