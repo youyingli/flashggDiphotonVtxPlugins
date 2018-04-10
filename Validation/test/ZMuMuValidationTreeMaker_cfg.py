@@ -49,8 +49,8 @@ process.commissioning = cms.EDAnalyzer('ZMuMuValidationTreeMaker',
 
                                        #vtxId and vtxProb 2016 with single leg
 
-#                                       vertexIdMVAweightfile = cms.FileInPath("flashgg/MicroAOD/data/TMVAClassification_BDTVtxId_SL_2016.xml"),
-#                                       vertexProbMVAweightfile = cms.FileInPath("flashgg/MicroAOD/data/TMVAClassification_BDTVtxProb_SL_2016.xml"),
+                                       #vertexIdMVAweightfile = cms.FileInPath("flashgg/MicroAOD/data/TMVAClassification_BDTVtxId_SL_2016.xml"),
+                                       #vertexProbMVAweightfile = cms.FileInPath("flashgg/MicroAOD/data/TMVAClassification_BDTVtxProb_SL_2016.xml"),
 
                                        #vtxId and vtxProb 2017 with single leg
                                        vertexIdMVAweightfile = cms.FileInPath("flashggDiphotonVtxPlugins/Validation/data/TMVAClassification_BDTVtxId_SL_2017.xml"),

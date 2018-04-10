@@ -24,7 +24,7 @@ process.source = cms.Source ("PoolSource",
 )
 
 process.TFileService = cms.Service("TFileService",
-                                   fileName = cms.string("photonJetTree.root")
+                                   fileName = cms.string("PhotonJetTree.root")
 )
 
 
@@ -69,16 +69,15 @@ process.commissioning = cms.EDAnalyzer('PhotonJetValidationTreeMaker',
                                        BeamSpotTag=cms.InputTag('offlineBeamSpot'),
                                        PileUpTag=cms.InputTag('slimmedAddPileupInfo'),
 #                                       evWeight = cms.double(1.00000) #Data
-#                                       evWeight = cms.double(1.00000) #GJets_HT-40To100
+                                       evWeight = cms.double(1.00000) #GJets_HT-40To100
 #                                       evWeight = cms.double(0.44768) #GJets_HT-100To200
 #                                       evWeight = cms.double(0.11234) #GJets_HT-200To400
 #                                       evWeight = cms.double(0.01332) #GJets_HT-400To600
-                                       evWeight = cms.double(0.00451) #GJets_HT-600ToInf
+#                                       evWeight = cms.double(0.00451) #GJets_HT-600ToInf
 )
 
 from HLTrigger.HLTfilters.hltHighLevel_cfi import hltHighLevel
-process.hltHighLevel= hltHighLevel.clone(HLTPaths = cms.vstring("HLT_Photon50_v*",
-                                                                ))
+process.hltHighLevel= hltHighLevel.clone(HLTPaths = cms.vstring("HLT_Photon50_v*"))
 
 from PhysicsTools.SelectorUtils.tools.vid_id_tools import DataFormat,switchOnVIDPhotonIdProducer,setupAllVIDIdsInModule,setupVIDPhotonSelection
 dataFormat = DataFormat.MiniAOD
@@ -94,12 +93,6 @@ process.RandomNumberGeneratorService = cms.Service("RandomNumberGeneratorService
 process.RandomNumberGeneratorService.flashggRandomizedPhotons = cms.PSet(
                   initialSeed = cms.untracked.uint32(16253245)
                           )
-
-#**************************************************************
-
-process.TFileService = cms.Service("TFileService",
-                                   fileName = cms.string("PhotonJetTree.root")
-)
 
 process.p = cms.Path(process.flashggPhotonJetValidationSequence
                     *process.egmPhotonIDSequence
