@@ -12,9 +12,6 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/Ptr.h"
-//#include "DataFormats/Common/interface/PtrVector.h"
-
-//#include "DataFormats/VertexReco/interface/Vertex.h"
 
 #include "flashgg/DataFormats/interface/Photon.h"
 
@@ -74,8 +71,6 @@ private:
 
     edm::Service<TFileService> fs_;
 
-
-
     virtual void beginJob() override;
     virtual void analyze( const edm::Event &, const edm::EventSetup & ) override;
     virtual void endJob() override;
@@ -85,7 +80,7 @@ private:
             const std::vector<edm::Ptr<reco::Vertex> > &vertices, double dzMatch = 0.1);
     double vtxZFromConvOnly( const edm::Ptr<flashgg::Photon> &pho, const edm::Ptr<reco:: Conversion> &conversion, const math::XYZPoint &beamSpot ) const;
     double vtxZFromConvSuperCluster( const edm::Ptr<flashgg::Photon> &pho, const edm::Ptr<reco:: Conversion> &conversion, const math::XYZPoint &beamSpot ) const;
-    vector<int> IndexMatchedConversion( const edm::Ptr<flashgg::Photon> &g, 
+    std::vector<int> IndexMatchedConversion( const edm::Ptr<flashgg::Photon> &g, 
             const std::vector<edm::Ptr<reco::Conversion> > &conversionsVector,  const std::vector<edm::Ptr<reco::Conversion> > &conversionsVectorSingleLeg,
             bool useSingleLeg ) const;
 
@@ -99,7 +94,6 @@ private:
     edm::EDGetTokenT<double>                            rhoTaken_;
     edm::EDGetTokenT<View<reco::GenParticle> >          genParticleToken_;
 
-
     TTree *resolutionTree;
     resolutionInfo resInfo;
 };
@@ -111,13 +105,13 @@ private:
 // constructors and destructor
 //
 ConvertedPhotonResoTreeMaker::ConvertedPhotonResoTreeMaker( const edm::ParameterSet &iConfig ):
-    photonToken_(consumes<View<flashgg::Photon> >(iConfig.getUntrackedParameter<InputTag> ("PhotonTag", InputTag("flashggPhotons")))),
-    vertexToken_( consumes<View<reco::Vertex> >( iConfig.getUntrackedParameter<InputTag> ( "VertexTag", InputTag( "offlineSlimmedPrimaryVertices" ) ) ) ),
-    conversionToken_(consumes<View<reco::Conversion> >(iConfig.getUntrackedParameter<InputTag>("ConversionTag",InputTag("reducedConversions")))),
-    singlelegconversionToken_(consumes<View<reco::Conversion> >(iConfig.getUntrackedParameter<InputTag>("SingleLegConversionTag",InputTag("reducedSingleLegConversions")))),
-    beamSpotToken_( consumes<reco::BeamSpot >( iConfig.getUntrackedParameter<InputTag>( "BeamSpotTag", InputTag( "offlineBeamSpot" ) ) ) ),
-    rhoTaken_( consumes<double>( iConfig.getUntrackedParameter<InputTag>( "rhoTag", InputTag( "fixedGridRhoFastjetAll" ) ) ) ),
-    genParticleToken_( consumes<View<reco::GenParticle> >( iConfig.getUntrackedParameter<InputTag> ( "GenParticleTag", InputTag( "prunedGenParticles" ) ) ) )
+    photonToken_( consumes<View<flashgg::Photon> >( iConfig.getParameter<InputTag> ( "PhotonTag" ) ) ),
+    vertexToken_( consumes<View<reco::Vertex> >( iConfig.getParameter<InputTag> ( "VertexTag" ) ) ),
+    conversionToken_( consumes<View<reco::Conversion> >( iConfig.getParameter<InputTag>( "ConversionTag" ) ) ),
+    singlelegconversionToken_( consumes<View<reco::Conversion> >( iConfig.getParameter<InputTag>( "SingleLegConversionTag" ) ) ),
+    beamSpotToken_( consumes<reco::BeamSpot >( iConfig.getParameter<InputTag>( "BeamSpotTag" ) ) ),
+    rhoTaken_( consumes<double>( iConfig.getParameter<InputTag>( "rhoTag" ) ) ),
+    genParticleToken_( consumes<View<reco::GenParticle> >( iConfig.getParameter<InputTag> ( "GenParticleTag" ) ) )
 {
 }
 

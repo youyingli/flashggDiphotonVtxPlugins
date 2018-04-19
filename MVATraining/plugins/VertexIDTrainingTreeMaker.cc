@@ -12,11 +12,8 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/Ptr.h"
-//#include "DataFormats/Common/interface/PtrVector.h"
 
-#include "DataFormats/VertexReco/interface/Vertex.h"
-
-#include "flashgg/MicroAOD/interface/VertexSelectorBase.h"
+#include "flashgg/DataFormats/interface/VertexCandidateMap.h"
 #include "flashgg/DataFormats/interface/Photon.h"
 #include "flashgg/DataFormats/interface/DiPhotonCandidate.h"
 #include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
@@ -72,11 +69,11 @@ using namespace flashgg;
 
 // **********************************************************************
 
-class vertexTrainingTreeMaker : public edm::EDAnalyzer
+class VertexIDTrainingTreeMaker : public edm::EDAnalyzer
 {
 public:
-    explicit vertexTrainingTreeMaker( const edm::ParameterSet & );
-    ~vertexTrainingTreeMaker();
+    explicit VertexIDTrainingTreeMaker( const edm::ParameterSet & );
+    ~VertexIDTrainingTreeMaker();
 
     static void fillDescriptions( edm::ConfigurationDescriptions &descriptions );
 
@@ -92,18 +89,16 @@ private:
     virtual void endJob() override;
 
     void initEventStructure();
-    int isloosePhoton( const flashgg::Photon* photon, double rho );
-    int mcTruthVertexIndex( const std::vector<edm::Ptr<reco::GenParticle> > &genParticles, const std::vector<edm::Ptr<reco::Vertex> > &, double dzMatch = 0.1 );
-    int sortedIndex( const unsigned int trueVtxIndex, const unsigned int sizemax, const Ptr<flashgg::DiPhotonCandidate> diphoPtr );
+    int isloosePhoton( const flashgg::Photon* photon, const double &rho );
+    int mcTruthVertexIndex( const std::vector<edm::Ptr<reco::GenParticle> > &genParticles, const std::vector<edm::Ptr<reco::Vertex> > &vertices, const double &dzMatch = 0.1 );
+    int sortedIndex( const unsigned int &trueVtxIndex, const unsigned int &sizemax, const Ptr<flashgg::DiPhotonCandidate> &diphoPtr );
 
-    //  edm::EDGetTokenT<edm::View<flashgg::Photon> >            photonToken_;
     edm::EDGetTokenT<edm::View<flashgg::DiPhotonCandidate> > diphotonToken_;
     edm::EDGetTokenT<edm::View<reco::Vertex> >               vertexToken_;
+    edm::EDGetTokenT<VertexCandidateMap> vertexCandidateMapTokenDz_;
 
-    //edm::EDGetTokenT<View<reco::Conversion> > conversionToken_;
     edm::EDGetTokenT<reco::BeamSpot > beamSpotToken_;
     edm::EDGetTokenT<double> rhoTaken_;
-    edm::EDGetTokenT<VertexCandidateMap> vertexCandidateMapTokenDz_;
     edm::EDGetTokenT<View<reco::GenParticle> > genParticleToken_;
     edm::EDGetTokenT<GenEventInfoProduct>  genEventInfoToken_;
 
@@ -114,8 +109,6 @@ private:
     BackgroundInfo bkgInfo;
     SignalInfo sigInfo;
 
-
-
 };
 
 // ******************************************************************************************
@@ -124,60 +117,37 @@ private:
 //
 // constructors and destructor
 //
-vertexTrainingTreeMaker::vertexTrainingTreeMaker( const edm::ParameterSet &iConfig ):
-    //  photonToken_(consumes<View<flashgg::Photon> >(iConfig.getUntrackedParameter<InputTag> ("PhotonTag", InputTag("flashggPhotons")))),
+VertexIDTrainingTreeMaker::VertexIDTrainingTreeMaker( const edm::ParameterSet &iConfig ):
     diphotonToken_( consumes<View<flashgg::DiPhotonCandidate> >( iConfig.getParameter<InputTag> ( "DiPhotonTag" ) ) ),
-    vertexToken_( consumes<View<reco::Vertex> >( iConfig.getUntrackedParameter<InputTag> ( "VertexTag", InputTag( "offlineSlimmedPrimaryVertices" ) ) ) ),
-    //  conversionToken_(consumes<View<reco::Conversion> >(iConfig.getUntrackedParameter<InputTag>("ConversionTag",InputTag("reducedConversions")))),
-    beamSpotToken_( consumes<reco::BeamSpot >( iConfig.getUntrackedParameter<InputTag>( "BeamSpotTag", InputTag( "offlineBeamSpot" ) ) ) ),
-    rhoTaken_( consumes<double>( iConfig.getUntrackedParameter<InputTag>( "rhoTag", InputTag( "fixedGridRhoFastjetAll" ) ) ) ),
+    vertexToken_( consumes<View<reco::Vertex> >( iConfig.getParameter<InputTag> ( "VertexTag" ) ) ),
     vertexCandidateMapTokenDz_( consumes<VertexCandidateMap>( iConfig.getParameter<InputTag>( "VertexCandidateMapTagDz" ) ) ),
-    genParticleToken_( consumes<View<reco::GenParticle> >( iConfig.getUntrackedParameter<InputTag> ( "GenParticleTag", InputTag( "prunedGenParticles" ) ) ) ),
-    genEventInfoToken_( consumes<GenEventInfoProduct>( iConfig.getUntrackedParameter<InputTag> ( "GenEventInfo", InputTag( "generator" ) ) ) )
+    beamSpotToken_( consumes<reco::BeamSpot >( iConfig.getParameter<InputTag>( "BeamSpotTag" ) ) ),
+    rhoTaken_( consumes<double>( iConfig.getParameter<InputTag>( "rhoTag" ) ) ),
+    genParticleToken_( consumes<View<reco::GenParticle> >( iConfig.getParameter<InputTag> ( "GenParticleTag" ) ) ),
+    genEventInfoToken_( consumes<GenEventInfoProduct>( iConfig.getParameter<InputTag> ( "GenEventInfo" ) ) )
 {
-
 }
 
-
-vertexTrainingTreeMaker::~vertexTrainingTreeMaker()
+VertexIDTrainingTreeMaker::~VertexIDTrainingTreeMaker()
 {
-
-
 }
-
-
 
 void
-vertexTrainingTreeMaker::analyze( const edm::Event &iEvent, const edm::EventSetup &iSetup )
+VertexIDTrainingTreeMaker::analyze( const edm::Event &iEvent, const edm::EventSetup &iSetup )
 {
 
     // ********************************************************************************
 
     // access edm objects
-    /*
-    Handle<View<flashgg::Photon> > photons;
-    iEvent.getByToken(photonToken_,photons);
-    const PtrVector<flashgg::Photon>& photonPointers = photons->ptrVector();
-    */
-
     Handle<View<flashgg::DiPhotonCandidate> > diphotons;
     iEvent.getByToken( diphotonToken_, diphotons );
     const std::vector<edm::Ptr<flashgg::DiPhotonCandidate> > diphotonsPtrs = diphotons->ptrs();
 
-
     Handle<View<reco::Vertex> > primaryVertices;
     iEvent.getByToken( vertexToken_, primaryVertices );
-//  const PtrVector<reco::Vertex>& pvPointers = primaryVertices->ptrVector();
 
-    Handle<double>  rho;
-    iEvent.getByToken(rhoTaken_,rho);
-    double rho_    = *rho;
-
-    /*
-    Handle<View<reco::Conversion> > conversions;
-    iEvent.getByToken(conversionToken_,conversions);
-    const PtrVector<reco::Conversion>& conversionPointers = conversions->ptrVector();
-    */
+    Handle<VertexCandidateMap> vertexCandidateMapDz;
+    iEvent.getByToken( vertexCandidateMapTokenDz_, vertexCandidateMapDz );
 
     Handle<reco::BeamSpot> recoBeamSpotHandle;
     iEvent.getByToken( beamSpotToken_, recoBeamSpotHandle );
@@ -188,9 +158,9 @@ vertexTrainingTreeMaker::analyze( const edm::Event &iEvent, const edm::EventSetu
         cout << " WARNING NO VALID BEAM SPOT: this should not happen!" << endl;
     }
 
-    Handle<VertexCandidateMap> vertexCandidateMapDz;
-
-    iEvent.getByToken( vertexCandidateMapTokenDz_, vertexCandidateMapDz );
+    Handle<double>  rho;
+    iEvent.getByToken(rhoTaken_,rho);
+    double rho_    = *rho;
 
     Handle<View<reco::GenParticle> > genParticles;
     iEvent.getByToken( genParticleToken_, genParticles );
@@ -275,117 +245,83 @@ vertexTrainingTreeMaker::analyze( const edm::Event &iEvent, const edm::EventSetu
 
     }  // end diphoton candidate loop
 
-
 }
 
 
 void
-vertexTrainingTreeMaker::beginJob()
+VertexIDTrainingTreeMaker::beginJob()
 {
     signalTree = fs_->make<TTree>( "signalTree", "per-diphoton tree" );
-    signalTree->Branch( "nvertex", &sigInfo.nvertex, "nvertex/I" );
-    signalTree->Branch( "ndipho", &sigInfo.ndipho, "ndipho/I" );
-    signalTree->Branch( "genweight", &sigInfo.genweight, "genweight/F" );
-    signalTree->Branch( "dipho_index", &sigInfo.dipho_index, "dipho_index/I" );
-    signalTree->Branch( "isloosephoton1", &sigInfo.isloosephoton1, "isloosephoton1/I" );
-    signalTree->Branch( "isloosephoton2", &sigInfo.isloosephoton2, "isloosephoton2/I" );
-    signalTree->Branch( "dipho_mass", &sigInfo.dipho_mass, "dipho_mass/F" );
-    signalTree->Branch( "logsumpt2", &sigInfo.LogSumPt2, "logsumpt2/F" );
-    signalTree->Branch( "ptbal", &sigInfo.PtBal, "ptbal/F" );
-    signalTree->Branch( "ptasym", &sigInfo.PtAsym, "ptasym/F" );
-    signalTree->Branch( "nConv", &sigInfo.NConv, "nConv/F" );
-    signalTree->Branch( "limPullToConv", &sigInfo.PullConv, "limPullToConv/F" );
+    signalTree->Branch( "nvertex"          , &sigInfo.nvertex         , "nvertex/I"        );
+    signalTree->Branch( "ndipho"           , &sigInfo.ndipho          , "ndipho/I"         );
+    signalTree->Branch( "genweight"        , &sigInfo.genweight       , "genweight/F"      );
+    signalTree->Branch( "dipho_index"      , &sigInfo.dipho_index     , "dipho_index/I"    );
+    signalTree->Branch( "isloosephoton1"   , &sigInfo.isloosephoton1  , "isloosephoton1/I" );
+    signalTree->Branch( "isloosephoton2"   , &sigInfo.isloosephoton2  , "isloosephoton2/I" );
+    signalTree->Branch( "dipho_mass"       , &sigInfo.dipho_mass      , "dipho_mass/F"     );
+    signalTree->Branch( "logsumpt2"        , &sigInfo.LogSumPt2       , "logsumpt2/F"      );
+    signalTree->Branch( "ptbal"            , &sigInfo.PtBal           , "ptbal/F"          );
+    signalTree->Branch( "ptasym"           , &sigInfo.PtAsym          , "ptasym/F"         );
+    signalTree->Branch( "nConv"            , &sigInfo.NConv           , "nConv/F"          );
+    signalTree->Branch( "limPullToConv"    , &sigInfo.PullConv        , "limPullToConv/F"  );
 
     backgroundTree = fs_->make<TTree>( "backgroundTree", "per-diphoton tree" );
-    backgroundTree->Branch( "nvertex", &bkgInfo.nvertex, "nvertex/I" );
-    backgroundTree->Branch( "ndipho", &bkgInfo.ndipho, "ndipho/I" );
-    backgroundTree->Branch( "genweight", &bkgInfo.genweight, "genweight/F" );
-    backgroundTree->Branch( "dipho_index", &bkgInfo.dipho_index, "dipho_index/I" );
-    backgroundTree->Branch( "isloosephoton1", &bkgInfo.isloosephoton1, "isloosephoton1/I" );
-    backgroundTree->Branch( "isloosephoton2", &bkgInfo.isloosephoton2, "isloosephoton2/I" );
-    backgroundTree->Branch( "dipho_mass", &bkgInfo.dipho_mass, "dipho_mass/F" );
-    backgroundTree->Branch( "logsumpt2", &bkgInfo.LogSumPt2, "logsumpt2/F" );
-    backgroundTree->Branch( "ptbal", &bkgInfo.PtBal, "ptbal/F" );
-    backgroundTree->Branch( "ptasym", &bkgInfo.PtAsym, "ptasym/F" );
-    backgroundTree->Branch( "nConv", &bkgInfo.NConv, "nConv/F" );
-    backgroundTree->Branch( "limPullToConv", &bkgInfo.PullConv, "limPullToConv/F" );
-
-
-
-
+    backgroundTree->Branch( "nvertex"          , &bkgInfo.nvertex         , "nvertex/I"         );
+    backgroundTree->Branch( "ndipho"           , &bkgInfo.ndipho          , "ndipho/I"          );
+    backgroundTree->Branch( "genweight"        , &bkgInfo.genweight       , "genweight/F"       );
+    backgroundTree->Branch( "dipho_index"      , &bkgInfo.dipho_index     , "dipho_index/I"     );
+    backgroundTree->Branch( "isloosephoton1"   , &bkgInfo.isloosephoton1  , "isloosephoton1/I"  );
+    backgroundTree->Branch( "isloosephoton2"   , &bkgInfo.isloosephoton2  , "isloosephoton2/I"  );
+    backgroundTree->Branch( "dipho_mass"       , &bkgInfo.dipho_mass      , "dipho_mass/F"      );
+    backgroundTree->Branch( "logsumpt2"        , &bkgInfo.LogSumPt2       , "logsumpt2/F"       );
+    backgroundTree->Branch( "ptbal"            , &bkgInfo.PtBal           , "ptbal/F"           );
+    backgroundTree->Branch( "ptasym"           , &bkgInfo.PtAsym          , "ptasym/F"          );
+    backgroundTree->Branch( "nConv"            , &bkgInfo.NConv           , "nConv/F"           );
+    backgroundTree->Branch( "limPullToConv"    , &bkgInfo.PullConv        , "limPullToConv/F"   );
 }
 
 void
-vertexTrainingTreeMaker::endJob()
+VertexIDTrainingTreeMaker::endJob()
 {
 }
 
 void
-vertexTrainingTreeMaker::initEventStructure()
+VertexIDTrainingTreeMaker::initEventStructure()
 {
 
-    sigInfo.nvertex = -999;
-    sigInfo.ndipho = -999;
-    sigInfo.dipho_index = -999;
-    sigInfo.isloosephoton1 = -999;
-    sigInfo.isloosephoton2 = -999;
-    sigInfo.dipho_mass = -999;
+    sigInfo.nvertex         = -999;
+    sigInfo.ndipho          = -999;
+    sigInfo.dipho_index     = -999;
+    sigInfo.isloosephoton1  = -999;
+    sigInfo.isloosephoton2  = -999;
+    sigInfo.dipho_mass      = -999.;
 
-    sigInfo.LogSumPt2  = -999;
-    sigInfo.PtBal  = -999;
-    sigInfo.PtAsym  = -999;
-    sigInfo.NConv  = -999;
-    sigInfo.PullConv  = -999;
+    sigInfo.LogSumPt2       = -999.;
+    sigInfo.PtBal           = -999.;
+    sigInfo.PtAsym          = -999.;
+    sigInfo.NConv           = -999.;
+    sigInfo.PullConv        = -999.;
 
-    sigInfo.genweight  = -999;
+    sigInfo.genweight       = -999.;
 
-    bkgInfo.nvertex = -999;
-    bkgInfo.ndipho = -999;
-    bkgInfo.dipho_index = -999;
-    bkgInfo.isloosephoton1 = -999;
-    bkgInfo.isloosephoton2 = -999;
-    bkgInfo.dipho_mass = -999;
+    bkgInfo.nvertex         = -999;
+    bkgInfo.ndipho          = -999;
+    bkgInfo.dipho_index     = -999;
+    bkgInfo.isloosephoton1  = -999;
+    bkgInfo.isloosephoton2  = -999;
+    bkgInfo.dipho_mass      = -999.;
 
-    bkgInfo.LogSumPt2  = -999;
-    bkgInfo.PtBal  = -999;
-    bkgInfo.PtAsym  = -999;
-    bkgInfo.NConv  = -999;
-    bkgInfo.PullConv  = -999;
+    bkgInfo.LogSumPt2       = -999.;
+    bkgInfo.PtBal           = -999.;
+    bkgInfo.PtAsym          = -999.;
+    bkgInfo.NConv           = -999.;
+    bkgInfo.PullConv        = -999.;
 
-    bkgInfo.genweight  = -999;
+    bkgInfo.genweight       = -999.;
 }
 
-
-/*
 void
-vertexTrainingTreeMaker::beginRun(edm::Run const&, edm::EventSetup const&)
-{
-}
-*/
-
-/*
-void
-vertexTrainingTreeMaker::endRun(edm::Run const&, edm::EventSetup const&)
-{
-}
-*/
-
-/*
-void
-vertexTrainingTreeMaker::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
-{
-}
-*/
-
-/*
-void
-vertexTrainingTreeMaker::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
-{
-}
-*/
-
-void
-vertexTrainingTreeMaker::fillDescriptions( edm::ConfigurationDescriptions &descriptions )
+VertexIDTrainingTreeMaker::fillDescriptions( edm::ConfigurationDescriptions &descriptions )
 {
     //The following says we do not know what parameters are allowed so do no validation
     // Please change this to state exactly what you do use, even if it is no parameters
@@ -395,7 +331,8 @@ vertexTrainingTreeMaker::fillDescriptions( edm::ConfigurationDescriptions &descr
 }
 
 
-int vertexTrainingTreeMaker::isloosePhoton( const flashgg::Photon* photon, double rho )
+int 
+VertexIDTrainingTreeMaker::isloosePhoton( const flashgg::Photon* photon, const double &rho )
 {
     unsigned int iphotIsolnAreaValN_ = 7; 
     double photIsolnEAreaVal_[iphotIsolnAreaValN_] = {1.0, 1.479, 2.0, 2.2, 2.3, 2.4, 999999.0};
@@ -441,7 +378,8 @@ int vertexTrainingTreeMaker::isloosePhoton( const flashgg::Photon* photon, doubl
     return ispass;
 }
 
-int vertexTrainingTreeMaker::sortedIndex( const unsigned int trueVtxIndex, const unsigned int sizemax, const Ptr<flashgg::DiPhotonCandidate> diphoPtr )
+int 
+VertexIDTrainingTreeMaker::sortedIndex( const unsigned int &trueVtxIndex, const unsigned int &sizemax, const Ptr<flashgg::DiPhotonCandidate> &diphoPtr )
 {
 
     for( unsigned int j = 0; j < sizemax; j++ ) {
@@ -451,8 +389,10 @@ int vertexTrainingTreeMaker::sortedIndex( const unsigned int trueVtxIndex, const
     }
     return -1;
 }
-int vertexTrainingTreeMaker::mcTruthVertexIndex( const std::vector<edm::Ptr<reco::GenParticle> > &genParticles ,
-        const std::vector<edm::Ptr<reco::Vertex> > &vertices, double dzMatch )
+
+int 
+VertexIDTrainingTreeMaker::mcTruthVertexIndex( const std::vector<edm::Ptr<reco::GenParticle> > &genParticles ,
+        const std::vector<edm::Ptr<reco::Vertex> > &vertices, const double &dzMatch )
 {
 
     reco::Vertex::Point hardVertex( 0, 0, 0 );
@@ -481,9 +421,7 @@ int vertexTrainingTreeMaker::mcTruthVertexIndex( const std::vector<edm::Ptr<reco
     return -1;
 }
 
-
-
-DEFINE_FWK_MODULE( vertexTrainingTreeMaker );
+DEFINE_FWK_MODULE( VertexIDTrainingTreeMaker );
 // Local Variables:
 // mode:c++
 // indent-tabs-mode:nil
